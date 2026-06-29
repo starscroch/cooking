@@ -1,0 +1,110 @@
+name: Moonell DTB/DTBO Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository: { description: 'Repo', required: true, default: 'starscroch/kernel_xiaomi_sm8250' }
+      branch: { description: 'Branch', required: true, default: 'lineage-clo' }
+      defconfig: { description: 'Defconfig', required: true, default: 'vendor/alioth_defconfig' }
+      toolchain:
+        description: 'Toolchain'
+        required: true
+        default: 'AOSP'
+        type: choice
+        options:
+          - AOSP
+          - Playground
+
+env:
+  CHAT_ID: "7538384857"
+  BOT_TOKEN: "8528926206:AAExdHhQrI3EdPudt77D_x5Z14o0jm8y924"
+  KBUILD_BUILD_USER: "moon.ell"
+  KBUILD_BUILD_HOST: "stargaze"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.inputs.repository }}
+        ref: ${{ github.event.inputs.branch }}
+        submodules: recursive
+
+    - name: Start Notification
+      run: |
+        curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendMessage" \
+        -d chat_id="${{ env.CHAT_ID }}" \
+        -d text="DTB/DTBO build dimulai: ${{ github.event.inputs.repository }} [${{ github.event.inputs.branch }}] menggunakan ${{ github.event.inputs.toolchain }}"
+
+    - name: Setup Toolchain
+      run: |
+        sudo apt-get update && sudo apt-get install -y \
+          build-essential libncurses-dev bison flex libssl-dev libelf-dev \
+          bc gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 python-is-python3 \
+          git wget curl device-tree-compiler
+
+        mkdir -p tc
+        if [ "${{ github.event.inputs.toolchain }}" = "Playground" ]; then
+          git clone --depth=1 https://github.com/KaiFujiro/playgroundtc -b 17 tc
+        else
+          wget -qO- https://github.com/moonooen/AOSP20/releases/download/v1.0/clang-r547379-qssi.tar.gz | tar -xz -C tc
+        fi
+
+        echo "PATH=$PWD/tc/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Build DTB/DTBO
+      run: |
+        export TZ="Asia/Jakarta"
+        BUILD_TIME=$(date +'%H%M-%d%m%y')
+        echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
+
+        ARGS="O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip \
+              OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump \
+              CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              LLVM=1 LLVM_IAS=1"
+
+        make $ARGS ${{ github.event.inputs.defconfig }}
+        make -j$(nproc) $ARGS dtbs 2>&1 | tee dtb_build.log
+
+        DTBO_DIR=out/arch/arm64/boot/dts/vendor/qcom
+
+        ls $DTBO_DIR/*.dtbo 1>/dev/null 2>&1 \
+          && mkdtimg create out/arch/arm64/boot/dtbo.img $DTBO_DIR/*.dtbo \
+          || echo "No .dtbo files found, skipping dtbo.img"
+
+        ls $DTBO_DIR/*.dtb 1>/dev/null 2>&1 \
+          && cat $DTBO_DIR/*.dtb > out/arch/arm64/boot/dtb.img \
+          || echo "No .dtb files found, skipping dtb.img"
+
+        [ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img ./ && echo "HAVE_DTBO=true" >> $GITHUB_ENV || true
+        [ -f out/arch/arm64/boot/dtb.img  ] && cp out/arch/arm64/boot/dtb.img  ./ && echo "HAVE_DTB=true"  >> $GITHUB_ENV || true
+
+    - name: Upload Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: DTB-${{ env.BUILD_TIME }}
+        path: |
+          dtb_build.log
+          dtbo.img
+          dtb.img
+
+    - name: Telegram Notification
+      if: always()
+      run: |
+        curl -s -F document=@"dtb_build.log" \
+          "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ env.CHAT_ID }}" \
+          -F caption="DTB build log"
+
+        [ -f dtbo.img ] && curl -s -F document=@"dtbo.img" \
+          "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ env.CHAT_ID }}" \
+          -F caption="dtbo.img [${{ github.event.inputs.branch }}]"
+
+        [ -f dtb.img ] && curl -s -F document=@"dtb.img" \
+          "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendDocument" \
+          -F chat_id="${{ env.CHAT_ID }}" \
+          -F caption="dtb.img [${{ github.event.inputs.branch }}]"
+          

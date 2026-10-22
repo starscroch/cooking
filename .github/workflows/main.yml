@@ -1,4 +1,4 @@
-name: gcc kernel build 
+name: gcc kernel build
 
 on:
   workflow_dispatch:
@@ -7,6 +7,8 @@ on:
       branch: { description: 'Branch', required: true, default: 'lineage-latte' }
       defconfig: { description: 'Defconfig', required: true, default: 'vendor/alioth_defconfig' }
       kernelsu_branch: { description: 'KSU Branch', required: false, default: 'master' }
+      nomount: { description: 'Enable nomount', required: false, type: boolean, default: true }
+      nomount_branch: { description: 'Nomount Branch', required: false, default: 'master' }
 
 env:
   CHAT_ID: ${{ secrets.CHAT_ID }}
@@ -47,6 +49,11 @@ jobs:
         echo "Detected GCC prefix: $GCC_PREFIX"
 
         curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_branch }}
+
+        if [ "${{ github.event.inputs.nomount }}" = "true" ]; then
+          echo "Setting up nomount [${{ github.event.inputs.nomount_branch }}]"
+          curl -LSs "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/${{ github.event.inputs.nomount_branch }}/kernel/setup.sh" | bash -
+        fi
 
         export ARCH=arm64
         ARGS="O=out ARCH=arm64 CROSS_COMPILE=${GCC_PREFIX} CROSS_COMPILE_ARM32=arm-linux-gnueabi- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- KCFLAGS=-Wno-error"

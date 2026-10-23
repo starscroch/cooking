@@ -1,0 +1,72 @@
+name: rebuild defconfig
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository: { description: 'Repo', required: true, default: 'rezadinosaurus/android_kernel_qcom_sm8250' }
+      branch: { description: 'Branch', required: true, default: 'lineage-latte' }
+      device:
+        description: 'Device'
+        required: true
+        type: choice
+        default: alioth
+        options: [alioth, apollo, cas, cmi, dagu, elish, enuma, lmi, munch, psyche, thyme, umi, all]
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.inputs.repository }}
+        ref: ${{ github.event.inputs.branch }}
+
+    - name: Setup Toolchain
+      run: |
+        sudo apt-get update && sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc gcc-arm-linux-gnueabi python3 python-is-python3 wget xz-utils
+
+        mkdir -p tc/gcc
+        wget -q "https://github.com/mvaisakh/gcc-build/releases/download/01102026/eva-gcc-arm64-01102026.xz" -O tc/gcc.tar.xz
+        tar -xf tc/gcc.tar.xz -C tc/gcc --strip-components=1
+        echo "$PWD/tc/gcc/bin" >> $GITHUB_PATH
+
+        GCC_PREFIX=$(find $PWD/tc/gcc/bin -name '*-gcc' | head -n1 | sed 's/.*\///;s/gcc$//')
+        echo "Detected GCC prefix: $GCC_PREFIX"
+        echo "GCC_PREFIX=$GCC_PREFIX" >> $GITHUB_ENV
+
+    - name: Rebuild Defconfig
+      run: |
+        set -eo pipefail
+        export ARCH=arm64
+        export CROSS_COMPILE=${GCC_PREFIX}
+
+        DEVICE_INPUT="${{ github.event.inputs.device }}"
+        ALL_DEVICES="alioth apollo cas cmi dagu elish enuma lmi munch psyche thyme umi"
+
+        if [ "$DEVICE_INPUT" = "all" ]; then
+          TARGETS="$ALL_DEVICES"
+        else
+          TARGETS="$DEVICE_INPUT"
+        fi
+
+        mkdir -p defconfig_output
+
+        for device in $TARGETS; do
+          OUT_DIR=$PWD/temp_${device}
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
+
+          make O="$OUT_DIR" ARCH=arm64 CROSS_COMPILE=${GCC_PREFIX} ${device}_defconfig
+          cp "$OUT_DIR/.config" defconfig_output/${device}.config
+          rm -rf "$OUT_DIR"
+        done
+
+        head -n 15 defconfig_output/*.config | tee -a $GITHUB_STEP_SUMMARY
+
+    - name: Upload Defconfig
+      uses: actions/upload-artifact@v4
+      with:
+        name: defconfig-${{ github.event.inputs.device }}
+        path: defconfig_output/
+        retention-days: 7
+        

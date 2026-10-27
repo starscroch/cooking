@@ -11,7 +11,7 @@ on:
       branch:
         description: "Kernel branch"
         required: true
-        default: "lineage-latte"
+        default: "lineage-base"
 
 env:
   KBUILD_BUILD_USER: "lloromannic"

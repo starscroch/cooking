@@ -65,7 +65,7 @@ jobs:
           mkdir -p "$GCC_DIR"
 
           wget -q \
-            "https://github.com/mvaisakh/gcc-build/releases/download/01102026/eva-gcc-arm64-01102026.xz" \
+            "https://github.com/mvaisakh/gcc-build/releases/download/25102026/eva-gcc-arm64-25102026.xz" \
             -O "$GITHUB_WORKSPACE/eva-gcc.tar.xz"
 
           tar -xf "$GITHUB_WORKSPACE/eva-gcc.tar.xz" \

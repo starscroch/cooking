@@ -6,6 +6,7 @@ on:
       repository: { description: 'Repo', required: true, default: 'rezadinosaurus/android_kernel_qcom_sm8250' }
       branch: { description: 'Branch', required: true, default: 'lineage-latte' }
       defconfig: { description: 'Defconfig', required: true, default: 'vendor/alioth_defconfig' }
+      ksu: { description: 'Enable KernelSU', required: false, type: boolean, default: true }
       kernelsu_branch: { description: 'KSU Branch', required: false, default: 'master' }
       nomount: { description: 'Enable nomount', required: false, type: boolean, default: true }
       nomount_branch: { description: 'Nomount Branch', required: false, default: 'master' }
@@ -48,7 +49,10 @@ jobs:
         GCC_PREFIX=$(find $PWD/tc/gcc/bin -name '*-gcc' | head -n1 | sed 's/.*\///;s/gcc$//')
         echo "Detected GCC prefix: $GCC_PREFIX"
 
-        curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_branch }}
+        if [ "${{ github.event.inputs.ksu }}" = "true" ]; then
+          echo "Setting up KernelSU [${{ github.event.inputs.kernelsu_branch }}]"
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_branch }}
+        fi
 
         if [ "${{ github.event.inputs.nomount }}" = "true" ]; then
           echo "Setting up nomount [${{ github.event.inputs.nomount_branch }}]"
@@ -95,4 +99,3 @@ jobs:
       run: |
         [ -f "compile.log" ] && curl -s -F document=@"compile.log" "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendDocument" -F chat_id="${{ env.CHAT_ID }}" -F caption="Build log"
         [ -f "${{ env.FINAL_ZIP }}" ] && curl -s -F document=@"${{ env.FINAL_ZIP }}" "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendDocument" -F chat_id="${{ env.CHAT_ID }}" -F caption="build done sayangg!!!"
-        
